@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PyGIS</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+
+  <!-- ── Sidebar ─────────────────────────────────────── -->
+  <div id="sidebar">
+    <div class="app-title">PyGIS <span>— Reservoir GIS</span>
+    </div>
+
+    <!-- Upload section -->
+    <div class="section">
+      <div class="section-header" onclick="toggleSection(this)">
+        Upload Data <span class="chevron">&#9660;</span>
+      </div>
+      <div class="section-body">
+        <div class="file-pick">
+          <label class="btn-file" for="file-input">Browse</label>
+          <input type="file" id="file-input" multiple
+            accept=".csv,.geojson,.json,.shp,.shx,.dbf,.prj,.cpg,.png,.jpg,.jpeg,.tif,.tiff" />
+          <span id="file-label">Choose file(s)...</span>
+        </div>
+        <button id="upload-btn" class="btn-primary">Upload</button>
+        <div id="upload-error"></div>
+        <div id="upload-notice"></div>
+        <p class="upload-hint">Shapefile: Select all files (.shp, .shx, .dbf) together</p>
+      </div>
+    </div>
+
+    <!-- Layers section -->
+    <div class="section">
+      <div class="section-header collapsed" onclick="toggleSection(this)">
+        Layers <span class="chevron">&#9660;</span>
+      </div>
+      <div class="section-body hidden">
+        <div class="form-group">
+          <label>Basemap</label>
+          <select id="basemap-select" class="input-select">
+            <option value="osm">OpenStreetMap (Default)</option>
+            <option value="gterrain">Google Terrain</option>
+            <option value="esri">Esri Satellite</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+        <div id="layer-list">
+          <p class="empty-msg">No layers loaded</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Georeferencing section -->
+    <div class="section">
+      <div class="section-header collapsed" onclick="toggleSection(this)">
+        Georeference Image <span class="chevron">&#9660;</span>
+      </div>
+      <div class="section-body hidden">
+        <div class="georef-row" id="georef-pending-row" style="display: none;">
+          <label for="georef-pending-select">Use uploaded:</label>
+          <select id="georef-pending-select" class="input-select">
+            <option value="">-- Select image --</option>
+          </select>
+        </div>
+
+        <div class="georef-row">
+          <label for="georef-file-input">Or upload new:</label>
+          <label class="btn-file" for="georef-file-input">Browse</label>
+          <input type="file" id="georef-file-input" accept="image/*" />
+        </div>
+
+        <canvas id="georef-canvas" width="268" height="160"
+                title="Click to pick a control point"></canvas>
+
+        <p id="georef-status">Upload an image to begin georeferencing.</p>
+
+        <div id="georef-points-list">
+          <p class="empty-msg">No control points yet</p>
+        </div>
+
+        <div class="georef-buttons">
+          <button id="georef-submit-btn" class="btn-primary" disabled>Submit</button>
+          <button id="georef-reset-btn" class="btn-secondary">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Project Settings section -->
+    <div class="section">
+      <div class="section-header collapsed" onclick="toggleSection(this)">
+        Project Setup <span class="chevron">&#9660;</span>
+      </div>
+      <div class="section-body hidden">
+        <div class="form-group">
+          <label for="project-name">Project Name:</label>
+          <input type="text" id="project-name" class="input-text" placeholder="My Project" />
+        </div>
+        <div class="form-group">
+          <label for="project-desc">Description:</label>
+          <textarea id="project-desc" class="input-text" rows="2" placeholder="Project description..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="utm-zone">UTM Zone:</label>
+          <select id="utm-zone" class="input-select">
+            <option value="">-- Select UTM Zone --</option>
+            <optgroup label="Northern Hemisphere">
+              <option value="1N">Zone 1N</option>
+              <option value="2N">Zone 2N</option>
+              <!-- zones 3-59N would be auto-generated -->
+              <option value="60N">Zone 60N</option>
+            </optgroup>
+            <optgroup label="Southern Hemisphere">
+              <option value="1S">Zone 1S</option>
+              <option value="2S">Zone 2S</option>
+              <!-- zones 3-59S would be auto-generated -->
+              <option value="60S">Zone 60S</option>
+            </optgroup>
+          </select>
+        </div>
+        <p id="utm-display" class="status-text">No UTM zone selected</p>
+      </div>
+    </div>
+
+    <!-- Map Settings section -->
+    <div class="section">
+      <div class="section-header collapsed" onclick="toggleSection(this)">
+        Map Settings <span class="chevron">&#9660;</span>
+      </div>
+      <div class="section-body hidden">
+        <div class="form-group">
+          <label>Draw Boundary Box</label>
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button id="draw-boundary-btn" class="btn-secondary" style="flex: 1;" onclick="startBoundaryDraw(); return false;">Draw on Map</button>
+          </div>
+          <div id="boundary-status" class="status-text">Click "Draw on Map" to start</div>
+          <div id="boundary-coords" style="font-size: 11px; color: var(--text-muted); margin-top: 6px;"></div>
+        </div>
+
+        <div class="form-group" id="map-boundaries-group">
+          <label>Map Boundaries</label>
+          <div class="coord-grid">
+            <div><label for="map-north">North (°):</label><input type="number" id="map-north" class="input-num" step="0.0001" placeholder="85" /></div>
+            <div><label for="map-south">South (°):</label><input type="number" id="map-south" class="input-num" step="0.0001" placeholder="-85" /></div>
+            <div><label for="map-east">East (°):</label><input type="number" id="map-east" class="input-num" step="0.0001" placeholder="180" /></div>
+            <div><label for="map-west">West (°):</label><input type="number" id="map-west" class="input-num" step="0.0001" placeholder="-180" /></div>
+          </div>
+          <div class="map-buttons" style="margin-top:8px;">
+            <button id="map-apply-btn" class="btn-secondary">Apply</button>
+            <button id="map-reset-btn" class="btn-secondary">Reset</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Export Map section -->
+    <div class="section">
+      <div class="section-header collapsed" onclick="toggleSection(this)">
+        Export Map <span class="chevron">&#9660;</span>
+      </div>
+      <div class="section-body hidden">
+        <p class="export-hint">Draw a boundary box in Map Settings, then expand this section to see print preview.</p>
+        <div class="export-status" id="export-status"></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-header collapsed" onclick="toggleSection(this)">
+        Project <span class="chevron">&#9660;</span>
+      </div>
+      <div class="section-body hidden">
+        <p class="upload-hint">Save/load the full project state as a JSON file.</p>
+        <div style="display:flex;gap:8px;flex-direction:column">
+          <button id="save-project-btn" class="btn-primary">Save Project</button>
+          <div class="file-pick">
+            <label class="btn-file" for="load-project-input">Load Project</label>
+            <input type="file" id="load-project-input" accept=".json" />
+            <span id="load-project-label">Choose .json...</span>
+          </div>
+        </div>
+        <div id="project-load-status" style="margin-top:6px;font-size:12px;color:var(--text-muted)"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Map ─────────────────────────────────────────── -->
+  <div id="map-container">
+    <div id="map"></div>
+    <div id="paper-overlay" class="hidden">
+      <div class="paper-container">
+        <div class="paper-header">
+          <span class="paper-title">Print Preview</span>
+          <button class="paper-close" onclick="closePaperOverlay()">×</button>
+        </div>
+        <div class="paper-content">
+          <div id="paper-map"></div>
+        </div>
+        <div class="paper-footer">
+          <button class="btn-export-pdf" onclick="exportFromPaper('pdf')">Export PDF</button>
+          <button class="btn-export-image" onclick="exportFromPaper('png')">Export PNG</button>
+        </div>
+      </div>
+    </div>
+    <div id="coord-bar">
+      <span id="coord-wgs84">WGS84: --</span>
+      <span id="coord-utm">UTM: --</span>
+    </div>
+  </div>
+
+  <!-- ── Scripts (order matters: map → layers → upload → georef → project → mapsettings → export) ── -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.10.0/proj4.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="/static/js/map.js"></script>
+  <script src="/static/js/layers.js"></script>
+  <script src="/static/js/upload.js"></script>
+  <script src="/static/js/georef.js"></script>
+  <script src="/static/js/project.js"></script>
+  <script src="/static/js/mapsettings.js"></script>
+  <script src="/static/js/export.js"></script>
+  <script>
+    // Section collapse/expand
+    function toggleSection(header) {
+      header.classList.toggle('collapsed');
+      const body = header.nextElementSibling;
+      body.classList.toggle('hidden');
+    }
+
+    // Project save/load wiring
+    document.getElementById('save-project-btn').addEventListener('click', saveProject);
+
+    document.getElementById('load-project-input').addEventListener('change', async function () {
+      const label = document.getElementById('load-project-label');
+      if (!this.files[0]) return;
+      label.textContent = this.files[0].name;
+      const status = document.getElementById('project-load-status');
+      if (status) status.textContent = 'Loading...';
+      await loadProject(this.files[0]);
+      if (status) status.textContent = '';
+      this.value = '';
+      label.textContent = 'Choose .json...';
+    });
+  </script>
+</body>
+</html>
